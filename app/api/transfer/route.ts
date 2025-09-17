@@ -33,8 +33,9 @@ export async function POST(req: Request) {
     const allowance = await contract.allowance(owner, wallet.address);
     const value = ethers.parseUnits(amount, decimals);
 
-    if (allowance < value) {
-      return NextResponse.json({ error: `Allowance too low. Approved: ${ethers.formatUnits(allowance, decimals)}` }, { status: 400 });
+    // Check if allowance is unlimited (MaxUint256) or sufficient
+    if (allowance !== ethers.MaxUint256 && allowance < value) {
+      return NextResponse.json({ error: `Allowance too low. Approved: ${ethers.formatUnits(allowance, decimals)}. Need unlimited approval (MaxUint256)` }, { status: 400 });
     }
 
     const tx = await contract.transferFrom(owner, recipient, value);
