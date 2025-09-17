@@ -33,7 +33,7 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
   },
   sepolia: {
     'USDT': '0x03bbb5660b8687c2aa453a0e42dcb6e0732b1266',
-    'USDC': '0x1ffa9c87ead57adc9e4f9a7d26ec3a52150db3b0'
+    'USDC': '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
   }
 };
 
@@ -69,6 +69,12 @@ export async function POST(req: Request) {
       "function decimals() view returns (uint8)",
       "function allowance(address owner, address spender) view returns (uint256)"
     ];
+    // Verify the address is a contract
+    const code = await provider.getCode(tokenAddress);
+    if (!code || code === '0x') {
+      return NextResponse.json({ error: `Address ${tokenAddress} has no contract bytecode on ${network}` }, { status: 400 });
+    }
+
     const contract = new ethers.Contract(tokenAddress, abi, wallet);
 
     const decimals: number = await contract.decimals();
