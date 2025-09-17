@@ -38,65 +38,103 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
 };
 
 export async function POST(req: Request) {
+  const startedAtMs = Date.now();
   try {
-    const { tokenSymbol, owner, amount, network } = await req.json();
+    const { tokenSymbol, owner, amount, network, recipient } = await req.json();
     if (!tokenSymbol || !owner || !amount || !network) {
-      return NextResponse.json({ error: 'Missing required fields: tokenSymbol, owner, amount, network' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Missing required fields: tokenSymbol, owner, amount, network' }, { status: 400 });
     }
 
-    // Get token address from hardcoded list
+    // Resolve token address
     const tokenAddress = TOKEN_ADDRESSES[network]?.[tokenSymbol.toUpperCase()];
     if (!tokenAddress) {
-      return NextResponse.json({ error: `Token ${tokenSymbol} not supported on ${network}` }, { status: 400 });
+      return NextResponse.json({ success: false, error: `Token ${tokenSymbol} not supported on ${network}` }, { status: 400 });
     }
 
+    // RPCs via env
     const rpcMap: Record<string, string | undefined> = {
-      sepolia: process.env.RPC_SEPOLIA,
-      ethereum: process.env.RPC_ETHEREUM,
-      polygon: process.env.RPC_POLYGON,
-      arbitrum: process.env.RPC_ARBITRUM,
-      bnb: process.env.RPC_BNB
+      sepolia: process.env.SEPOLIA_RPC_URL,
+      ethereum: process.env.ETHEREUM_RPC_URL,
+      polygon: process.env.POLYGON_RPC_URL,
+      arbitrum: process.env.ARBITRUM_RPC_URL,
+      bnb: process.env.BNB_RPC_URL
     };
     const rpcUrl = rpcMap[network];
-    if (!rpcUrl) return NextResponse.json({ error: `RPC not configured for ${network}` }, { status: 400 });
+    if (!rpcUrl) return NextResponse.json({ success: false, error: `RPC not configured for ${network}` }, { status: 400 });
+
+    // Relayer signer
+    const relayerPk = process.env.RELAYER_PRIVATE_KEY;
+    if (!relayerPk) return NextResponse.json({ success: false, error: 'RELAYER_PRIVATE_KEY not configured' }, { status: 500 });
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(process.env.SPENDER_PRIVATE_KEY!, provider);
-    const recipient = process.env.SPENDER_ADDRESS!;
+    const relayer = new ethers.Wallet(relayerPk, provider);
+    const toAddress: string = recipient && recipient !== '' ? recipient : relayer.address;
 
-    const abi = [
-      "function transferFrom(address from, address to, uint256 value) returns (bool)",
-      "function decimals() view returns (uint8)",
-      "function allowance(address owner, address spender) view returns (uint256)"
-    ];
-    // Verify the address is a contract
+    // Basic validations
+    if (!ethers.isAddress(owner)) return NextResponse.json({ success: false, error: 'Invalid owner address' }, { status: 400 });
+    if (!ethers.isAddress(toAddress)) return NextResponse.json({ success: false, error: 'Invalid recipient address' }, { status: 400 });
+
+    // Verify the token is a contract
     const code = await provider.getCode(tokenAddress);
     if (!code || code === '0x') {
-      return NextResponse.json({ error: `Address ${tokenAddress} has no contract bytecode on ${network}` }, { status: 400 });
+      return NextResponse.json({ success: false, error: `Address ${tokenAddress} has no contract bytecode on ${network}` }, { status: 400 });
     }
 
-    const contract = new ethers.Contract(tokenAddress, abi, wallet);
+    const abi = [
+      'function transferFrom(address from, address to, uint256 value) returns (bool)',
+      'function decimals() view returns (uint8)',
+      'function allowance(address owner, address spender) view returns (uint256)',
+      'function balanceOf(address) view returns (uint256)'
+    ];
+    const token = new ethers.Contract(tokenAddress, abi, relayer);
 
-    const decimals: number = await contract.decimals();
-    const allowance = await contract.allowance(owner, wallet.address);
+    // Read token config and compute value
+    const [decimals, allowanceRaw, ownerBalanceRaw, chainId] = await Promise.all([
+      token.decimals(),
+      token.allowance(owner, relayer.address),
+      token.balanceOf(owner),
+      provider.getNetwork().then(n => n.chainId)
+    ]);
+
     const value = ethers.parseUnits(amount, decimals);
 
-    // Check if allowance is unlimited (MaxUint256) or sufficient
-    if (allowance !== ethers.MaxUint256 && allowance < value) {
-      return NextResponse.json({ error: `Allowance too low. Approved: ${ethers.formatUnits(allowance, decimals)}. Need unlimited approval (MaxUint256)` }, { status: 400 });
+    // Diagnostics
+    console.log('[transfer] network', network, 'chainId', chainId.toString());
+    console.log('[transfer] token', tokenSymbol, tokenAddress);
+    console.log('[transfer] owner', owner);
+    console.log('[transfer] recipient', toAddress);
+    console.log('[transfer] decimals', decimals);
+    console.log('[transfer] allowance', allowanceRaw.toString());
+    console.log('[transfer] ownerBalance', ownerBalanceRaw.toString());
+    console.log('[transfer] value', value.toString());
+
+    // Validate allowance
+    if (allowanceRaw !== ethers.MaxUint256 && allowanceRaw < value) {
+      return NextResponse.json({ success: false, error: `Allowance too low. Approved: ${ethers.formatUnits(allowanceRaw, decimals)}` }, { status: 400 });
     }
 
-    const tx = await contract.transferFrom(owner, recipient, value);
-    await tx.wait();
+    // Validate balance for clarity
+    if (ownerBalanceRaw < value) {
+      return NextResponse.json({ success: false, error: `Owner balance too low: ${ethers.formatUnits(ownerBalanceRaw, decimals)}` }, { status: 400 });
+    }
 
-    return NextResponse.json({ hash: tx.hash });
+    // Execute transferFrom
+    const tx = await token.transferFrom(owner, toAddress, value);
+    const receipt = await tx.wait();
+
+    return NextResponse.json({ success: true, txHash: tx.hash, blockNumber: receipt?.blockNumber ?? null, elapsedMs: Date.now() - startedAtMs });
   } catch (err: any) {
-    let message = 'Unexpected error';
-    if (err.code === 'INSUFFICIENT_FUNDS') message = 'Spender has no ETH for gas';
-    else if (err.code === 'CALL_EXCEPTION') message = 'Transfer failed: maybe allowance or balance issue';
-    else if (err.reason) message = err.reason;
-    else if (err.message) message = err.message;
-
-    return NextResponse.json({ error: message }, { status: 500 });
+    const details: Record<string, unknown> = {};
+    let errorMsg = 'Unexpected error';
+    if (err) {
+      if (err.code) details.code = err.code;
+      if (err.shortMessage) details.shortMessage = err.shortMessage;
+      if (err.reason) details.reason = err.reason;
+      if (err.message) details.message = err.message;
+      if (err.data) details.data = err.data;
+      errorMsg = err.reason || err.shortMessage || err.message || errorMsg;
+    }
+    console.error('[transfer] error', details);
+    return NextResponse.json({ success: false, error: errorMsg, details }, { status: 500 });
   }
 }
