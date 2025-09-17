@@ -2,26 +2,24 @@
 import { useState } from 'react';
 
 export default function Home() {
-  const [token, setToken] = useState('');
+  const [tokenSymbol, setTokenSymbol] = useState('');
   const [owner, setOwner] = useState('');
   const [amount, setAmount] = useState('');
   const [network, setNetwork] = useState('sepolia');
-  const [symbol, setSymbol] = useState('');
   const [approved, setApproved] = useState('');
   const [status, setStatus] = useState('');
 
-  async function fetchTokenMetaAndAllowance(tokenAddress: string, net: string, ownerAddr: string) {
+  async function fetchTokenMetaAndAllowance(tokenSymbol: string, net: string, ownerAddr: string) {
     try {
-      const res = await fetch('/api/tokeninfo', {   // 👈 all lowercase
+      const res = await fetch('/api/tokeninfo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokenAddress, network: net, owner: ownerAddr })
+        body: JSON.stringify({ tokenSymbol, network: net, owner: ownerAddr })
       });
       if (!res.ok) {
         throw new Error(`API error: ${res.status}`);
       }
       const data = await res.json();
-      setSymbol(data.symbol || 'Unknown');
       setApproved(data.allowance || '0');
     } catch (err: any) {
       console.error(err);
@@ -32,10 +30,10 @@ export default function Home() {
   async function handleTransfer() {
     setStatus('⏳ Processing...');
     try {
-      const res = await fetch('/api/transfer', {   // 👈 keep lowercase here too
+      const res = await fetch('/api/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokenAddress: token, owner, amount, network })
+        body: JSON.stringify({ tokenSymbol, owner, amount, network })
       });
       const data = await res.json();
       if (res.ok) {
@@ -52,20 +50,31 @@ export default function Home() {
     <div className="min-h-screen bg-[#0f0f2f] text-gray-100 flex flex-col items-center justify-center p-6">
       <h1 className="text-2xl font-bold mb-4">ERC-20 Token Transfer (via Allowance)</h1>
 
-      {symbol && <h2 className="text-xl mb-2">Detected Token: {symbol}</h2>}
+      {tokenSymbol && <h2 className="text-xl mb-2">Selected Token: {tokenSymbol}</h2>}
       {approved && <p className="mb-4">✅ Approved Allowance: {approved}</p>}
 
       <div className="flex flex-col gap-3 w-full max-w-sm">
-        <input
-          type="text"
-          placeholder="Token Address"
-          value={token}
+        <select
+          value={tokenSymbol}
           onChange={e => {
-            setToken(e.target.value);
+            setTokenSymbol(e.target.value);
             if (owner) fetchTokenMetaAndAllowance(e.target.value, network, owner);
           }}
           className="w-full rounded-lg border border-gray-600 bg-[#1c1c3a] px-3 py-2 text-white focus:outline-none"
-        />
+        >
+          <option value="">Select Token</option>
+          <option value="USDT">USDT</option>
+          <option value="USDC">USDC</option>
+          <option value="WETH">WETH</option>
+          <option value="DAI">DAI</option>
+          <option value="UNI">UNI</option>
+          <option value="LINK">LINK</option>
+          <option value="WBTC">WBTC</option>
+          <option value="WMATIC">WMATIC</option>
+          <option value="ARB">ARB</option>
+          <option value="WBNB">WBNB</option>
+          <option value="BUSD">BUSD</option>
+        </select>
 
         <input
           type="text"
@@ -73,7 +82,7 @@ export default function Home() {
           value={owner}
           onChange={e => {
             setOwner(e.target.value);
-            if (token) fetchTokenMetaAndAllowance(token, network, e.target.value);
+            if (tokenSymbol) fetchTokenMetaAndAllowance(tokenSymbol, network, e.target.value);
           }}
           className="w-full rounded-lg border border-gray-600 bg-[#1c1c3a] px-3 py-2 text-white focus:outline-none"
         />
@@ -90,7 +99,7 @@ export default function Home() {
           value={network}
           onChange={e => {
             setNetwork(e.target.value);
-            if (token && owner) fetchTokenMetaAndAllowance(token, e.target.value, owner);
+            if (tokenSymbol && owner) fetchTokenMetaAndAllowance(tokenSymbol, e.target.value, owner);
           }}
           className="w-full rounded-lg border border-gray-600 bg-[#1c1c3a] px-3 py-2 text-white focus:outline-none"
         >
