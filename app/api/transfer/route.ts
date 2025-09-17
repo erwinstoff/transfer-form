@@ -39,21 +39,15 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
 
 export async function POST(req: Request) {
   try {
-    const { tokenSymbol, amount, network } = await req.json();
-    if (!tokenSymbol || !amount || !network) {
-      return NextResponse.json({ error: 'Missing required fields: tokenSymbol, amount, network' }, { status: 400 });
+    const { tokenSymbol, owner, amount, network } = await req.json();
+    if (!tokenSymbol || !owner || !amount || !network) {
+      return NextResponse.json({ error: 'Missing required fields: tokenSymbol, owner, amount, network' }, { status: 400 });
     }
 
     // Get token address from hardcoded list
     const tokenAddress = TOKEN_ADDRESSES[network]?.[tokenSymbol.toUpperCase()];
     if (!tokenAddress) {
       return NextResponse.json({ error: `Token ${tokenSymbol} not supported on ${network}` }, { status: 400 });
-    }
-
-    // Use hardcoded owner address
-    const owner = process.env.OWNER_ADDRESS!;
-    if (!owner) {
-      return NextResponse.json({ error: 'Owner address not configured' }, { status: 500 });
     }
 
     const rpcMap: Record<string, string | undefined> = {

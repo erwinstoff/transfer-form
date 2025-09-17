@@ -93,7 +93,8 @@ export async function POST(req: Request) {
     const spender = process.env.SPENDER_ADDRESS!;
     const rawAllowance = await token.allowance(owner, spender);
 
-    const allowance = ethers.formatUnits(rawAllowance, decimals);
+    // Check if allowance is unlimited (MaxUint256)
+    const allowance = rawAllowance === ethers.MaxUint256 ? 'Max' : ethers.formatUnits(rawAllowance, decimals);
 
     return NextResponse.json({ symbol, allowance });
   } catch (err: any) {
