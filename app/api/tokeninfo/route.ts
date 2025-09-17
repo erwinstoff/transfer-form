@@ -33,7 +33,7 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
   },
   sepolia: {
     'USDT': '0x03bbb5660b8687c2aa453a0e42dcb6e0732b1266',
-    'USDC': '0x1ffa9c87ead57adc9e4f9a7d26ec3a52150db3b0'
+    'USDC': '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
   }
 };
 
