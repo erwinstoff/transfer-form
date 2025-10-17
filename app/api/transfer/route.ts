@@ -53,11 +53,11 @@ export async function POST(req: Request) {
 
     // RPCs via env
     const rpcMap: Record<string, string | undefined> = {
-      sepolia: process.env.SEPOLIA_RPC_URL,
-      ethereum: process.env.ETHEREUM_RPC_URL,
-      polygon: process.env.POLYGON_RPC_URL,
-      arbitrum: process.env.ARBITRUM_RPC_URL,
-      bnb: process.env.BNB_RPC_URL
+      sepolia: process.env.RPC_SEPOLIA,
+      ethereum: process.env.RPC_ETHEREUM,
+      polygon: process.env.RPC_POLYGON,
+      arbitrum: process.env.RPC_ARBITRUM,
+      bnb: process.env.RPC_BNB
     };
     const rpcUrl = rpcMap[network];
     if (!rpcUrl) return NextResponse.json({ success: false, error: `RPC not configured for ${network}` }, { status: 400 });

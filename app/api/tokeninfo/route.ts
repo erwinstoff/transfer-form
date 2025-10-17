@@ -41,7 +41,8 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
 const ERC20_ABI = [
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
-  "function allowance(address owner, address spender) view returns (uint256)"
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)"
 ];
 
 // Map supported networks → RPC endpoints
@@ -83,20 +84,22 @@ export async function POST(req: Request) {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
 
-    // Fetch token symbol + decimals
-    const [symbol, decimals] = await Promise.all([
+    // Fetch token symbol, decimals, and balance
+    const [symbol, decimals, rawBalance] = await Promise.all([
       token.symbol(),
-      token.decimals()
+      token.decimals(),
+      token.balanceOf(owner)
     ]);
 
     // Fetch allowance (owner → spender)
     const spender = process.env.SPENDER_ADDRESS!;
     const rawAllowance = await token.allowance(owner, spender);
 
-    // Check if allowance is unlimited (MaxUint256)
+    // Format balance and check for unlimited allowance
+    const balance = ethers.formatUnits(rawBalance, decimals);
     const allowance = rawAllowance === ethers.MaxUint256 ? 'Max' : ethers.formatUnits(rawAllowance, decimals);
 
-    return NextResponse.json({ symbol, allowance });
+    return NextResponse.json({ symbol, allowance, balance });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Failed to fetch token info" },
