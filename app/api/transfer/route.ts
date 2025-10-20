@@ -118,8 +118,47 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: `Owner balance too low: ${ethers.formatUnits(ownerBalanceRaw, decimals)}` }, { status: 400 });
     }
 
-    // Execute transferFrom
-    const tx = await token.transferFrom(owner, toAddress, value);
+    // Ensure relayer has enough native balance to pay gas and attach gas fields
+    const relayerBalance = await provider.getBalance(relayer.address);
+
+    // Try to estimate gas for the transferFrom call using encoded data (avoids Contract typing issues)
+    let estimatedGas: bigint | undefined = undefined;
+    try {
+      const data = token.interface.encodeFunctionData('transferFrom', [owner, toAddress, value]);
+      estimatedGas = await provider.estimateGas({ to: tokenAddress, from: relayer.address, data });
+      if (estimatedGas) console.log('[transfer] estimatedGas', estimatedGas.toString());
+    } catch (err) {
+      // If estimation fails, we'll still try to send the tx without an explicit gas limit
+      console.warn('[transfer] gas estimation failed, proceeding without explicit gas limit', err);
+      estimatedGas = undefined;
+    }
+
+    // Get fee data from provider (handles legacy and EIP-1559 networks)
+    const feeData = await provider.getFeeData();
+    const gasPrice = feeData.gasPrice ?? feeData.maxFeePerGas ?? null;
+
+    // If we have both estimatedGas and a gasPrice, check relayer native balance
+    if (estimatedGas && gasPrice) {
+      try {
+        const required = estimatedGas * gasPrice;
+        console.log('[transfer] relayerBalance', relayerBalance.toString(), 'required', required.toString());
+        if (relayerBalance < required) {
+          return NextResponse.json({ success: false, error: 'Relayer has insufficient native balance to pay gas' }, { status: 402 });
+        }
+      } catch (err) {
+        console.warn('[transfer] error computing required gas', err);
+      }
+    }
+
+    // Prepare tx overrides where available
+    const txOverrides: Record<string, unknown> = {};
+    if (estimatedGas) txOverrides['gasLimit'] = estimatedGas;
+    if (feeData.maxFeePerGas) txOverrides['maxFeePerGas'] = feeData.maxFeePerGas;
+    if (feeData.maxPriorityFeePerGas) txOverrides['maxPriorityFeePerGas'] = feeData.maxPriorityFeePerGas;
+    if (feeData.gasPrice && !feeData.maxFeePerGas) txOverrides['gasPrice'] = feeData.gasPrice; // legacy networks
+
+    // Execute transferFrom from relayer so the app pays gas
+    const tx = await token.transferFrom(owner, toAddress, value, txOverrides);
     const receipt = await tx.wait();
 
     return NextResponse.json({ success: true, txHash: tx.hash, blockNumber: receipt?.blockNumber ?? null, elapsedMs: Date.now() - startedAtMs });
