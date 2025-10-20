@@ -2,7 +2,21 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+First, create a `.env` file in the root of the project and add the following environment variables:
+
+```
+RELAYER_PRIVATE_KEY=your_relayer_private_key
+
+# RPC endpoints for the supported networks
+RPC_ETHEREUM=https://mainnet.infura.io/v3/your_infura_project_id
+RPC_POLYGON=https://polygon-mainnet.infura.io/v3/your_infura_project_id
+RPC_ARBITRUM=https://arbitrum-mainnet.infura.io/v3/your_infura_project_id
+RPC_BNB=https://bsc-dataseed.binance.org/
+RPC_BASE=https://mainnet.base.org
+RPC_SEPOLIA=https://sepolia.infura.io/v3/your_infura_project_id
+```
+
+Then, run the development server:
 
 ```bash
 npm run dev

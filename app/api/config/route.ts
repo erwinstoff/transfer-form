@@ -7,7 +7,8 @@ export async function GET() {
 		ethereum: process.env.RPC_ETHEREUM ?? null,
 		polygon: process.env.RPC_POLYGON ?? null,
 		arbitrum: process.env.RPC_ARBITRUM ?? null,
-		bnb: process.env.RPC_BNB ?? null
+		bnb: process.env.RPC_BNB ?? null,
+		base: process.env.RPC_BASE ?? null
 	});
 }
 
